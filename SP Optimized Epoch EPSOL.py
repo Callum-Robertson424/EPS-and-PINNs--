@@ -41,7 +41,7 @@ p = tfk.Variable(6.701, dtype=tf.float32, trainable=True)  # Initial period
                          
 #-----------------------------------------------------------------------------#
 
-def plot1():
+def fade_plot():
     x = np.sin(theta_pred[:, 0])
     z = -np.cos(theta_pred[:, 0])
     
@@ -93,7 +93,7 @@ def plot1():
     plt.tight_layout()
     plt.show()
 
-def plot2():
+def training_plot():
     plt.figure(figsize=(20,20))
 
     plt.subplot(3, 1, 3)
@@ -332,8 +332,8 @@ theta, omega = solution.y
 
 #-----------------------------------------------------------------------------#
 
-plot1()
-plot2()
+fade_plot()
+training_plot()
 phase_plot()
 
 # yn = input("Output animations? (Enter y for animations) : ")

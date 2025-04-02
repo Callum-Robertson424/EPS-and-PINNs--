@@ -49,7 +49,7 @@ def energy_func(theta1, theta2, omega1, omega2):
                          
 #-----------------------------------------------------------------------------#
 
-def plot1():
+def phase_plot():
     plt.figure(figsize=(10,10))
     plt.plot(theta1_pred, omega1_pred, lw=4, color='orange', label='Predicted phase top')
     plt.plot(theta2_pred, omega2_pred, lw=4, color='chocolate', label='Predicted phase bottom')
@@ -62,7 +62,7 @@ def plot1():
     plt.legend()
     plt.show
 
-def plot2():
+def training_plot():
     plt.figure(figsize=(20,20))
     
     plt.subplot(3, 1, 1)
@@ -91,9 +91,8 @@ def plot2():
     plt.grid(True)
     plt.legend()
     
-    return(plt.show())
-
-def plot3():    
+    plt.show()
+    
     plt.figure(figsize=(20,20))
     
     plt.subplot(3, 1, 1)
@@ -120,11 +119,11 @@ def plot3():
     plt.ylabel("Energy")
     plt.legend()
     
-    return(plt.show())
+    plt.show()
 
-def plot4():
+def three_d_phase_plot():
     fig = plt.figure(figsize=(14, 18))
-
+    
     ax1 = fig.add_subplot(121, projection='3d')
     ax1.scatter(theta1_pred, omega1_pred, theta2_pred, c = theta2_pred, cmap='coolwarm')
     ax1.set_title(r'$\theta_1 \ vs \ \omega_1 \ vs \ \theta_2$', fontsize=25, y=1)
@@ -135,7 +134,7 @@ def plot4():
     
     return(plt.show())
 
-def plot5():
+def fade_plot():
 
     # Pendulum positions
     x1 = np.sin(theta1_pred[:,0])
@@ -453,11 +452,10 @@ theta1, theta2, omega1, omega2 = solution.y
 
 #-----------------------------------------------------------------------------#
 
-plot5()
-plot2()
-plot3()
-plot4()
-plot1()
+phase_plot()
+training_plot()
+three_d_phase_plot()
+fade_plot()
 check_plot()
 
 #-----------------------------------------------------------------------------#
