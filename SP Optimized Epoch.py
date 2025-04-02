@@ -44,13 +44,13 @@ def plot1():
     xa = np.sin(theta)
     za = -np.cos(theta)
     
-    num_positions = 6
-    indices = np.linspace(0, 300, num_positions, dtype=int)
+    num_positions = 8
+    indices = np.linspace(0, 350, num_positions, dtype=int)
 
     colors = cm.Blues(np.linspace(0.1, 0.8, num_positions))
     colors2 = cm.Oranges(np.linspace(0.1, 0.8, num_positions)) 
 
-    fig, axs = plt.subplots(1, 3, figsize=(24, 8))
+    fig, axs = plt.subplots(1, 3, figsize=(22, 8))
     fig.suptitle("Trajectory Plots", fontsize=16, x=0.34)
 
     for i, idx in enumerate(indices):
@@ -76,10 +76,10 @@ def plot1():
         axs[1].set_ylabel('Z')
         axs[1].set_title('Exact Solution')
         
-    fig.add_artist(plt.Line2D([0.667, 0.667], [0, 1], color='black', lw=1, transform=fig.transFigure))
+    fig.add_artist(plt.Line2D([0.668, 0.668], [0, 1], color='black', lw=1, transform=fig.transFigure))
     
-    axs[2].plot(theta_pred, omega_pred, lw=4, linestyle = "--", color='orange', label='Predicted phase')
-    axs[2].plot(theta, omega, lw=1, color='blue', label="Exact Phase")
+    axs[2].plot(theta_pred, omega_pred, lw=2, color='orange', label='Predicted phase')
+    axs[2].plot(theta, omega, lw=2, color='blue', label="Exact Phase")
     axs[2].set_title("Phase Plot (omega, theta)")
     axs[2].set_xlabel("theta")
     axs[2].set_ylabel("omega")
@@ -111,8 +111,8 @@ def plot2():
     plt.legend()
 
     plt.show
-    
-def phase_plot():   
+
+def phase_plot():
     plt.figure(figsize=(10,10))
     plt.plot(theta_pred, omega_pred, lw=4, linestyle = "--", color='orange', label='Predicted phase')
     plt.plot(theta, omega, lw=1, color='blue', label="Exact Phase")
@@ -132,12 +132,12 @@ def phase_plot():
 def build_model():
     model = Sequential([
         Input(shape=(1,)), # Input is time t
-        Dense(100, activation='swish', bias_initializer='lecun_uniform'),  
         Dense(100, activation='swish', bias_initializer='lecun_uniform'),
         Dense(100, activation='swish', bias_initializer='lecun_uniform'),
         Dense(100, activation='swish', bias_initializer='lecun_uniform'),
         Dense(100, activation='swish', bias_initializer='lecun_uniform'),
-        Dense(2, activation='linear', bias_initializer='random_uniform') 
+        Dense(100, activation='swish', bias_initializer='lecun_uniform'),
+        Dense(2, activation='linear', bias_initializer='random_uniform')  # Two outputs: theta and omega
     ])
     return model
 
@@ -184,13 +184,8 @@ def physics_informed_loss(t, theta_pred, omega_pred):
 
 #-----------------------------------------------------------------------------#
 
-# Initial conditions
-theta0 = 1
-omega0 = 0
-T=10
-
 # Generate training data
-t_train = np.linspace(0, T, 1000).reshape(-1, 1) # Sample points from the domain [0, 10]
+t_train = np.linspace(0, 1, 1000).reshape(-1, 1) # Sample points from the domain [0, 10]
 
 # Convert training data to TensorFlow tensors
 t_train_tensor = tf.convert_to_tensor(t_train, dtype=tf.float32)
@@ -198,6 +193,11 @@ t_train_tensor = tf.convert_to_tensor(t_train, dtype=tf.float32)
 # Build and compile the model
 model = build_model()
 optimizer = Adam(learning_rate=0.001)
+
+# Initial conditions
+theta0 = 1
+omega0 = 0
+T=10
 
 # Lists for plotting
 loss_history = []
@@ -214,9 +214,9 @@ initial_energy = energy_func(theta0, omega0)
         # Training Loop 
 
 #-----------------------------------------------------------------------------#
-
 epoch = 0
 check = True
+loss = 2
 
 start_time = time.time()
 
@@ -229,9 +229,7 @@ while check == True:
 
         # Physics-informed loss
         pde_loss = physics_informed_loss(t_train_tensor, theta_pred, omega_pred)
-        theta_mse = tf.reduce_mean(tf.square(theta_pred[0] - theta0))
-        omega_mse = tf.reduce_mean(tf.square(omega_pred[0] - omega0))
-        ic_loss =  theta_mse + omega_mse
+        ic_loss = tf.reduce_mean(tf.square(theta_pred[0] - theta0)) + tf.reduce_mean(tf.square(omega_pred[0] - omega0))
 
         # Total loss is a weighted sum of both losses
         loss = pde_loss + ic_loss
@@ -247,16 +245,16 @@ while check == True:
     loss_history.append(loss)
     
     # Check if the loss is < 10^-2
-    if epoch > 698:
+    if loss < 0.01:
         check = False    
     epoch = epoch + 1
     
     # Print the loss value periodically
     if epoch % 50 == 0:
-        print(f"Epoch {epoch}:  Loss = {loss}:  Avg_Energy = {energy_history}")
+        print(f"Epoch {epoch}:  Loss = {loss}:  Avg_Energy = {np.average(energy_epoch)}")
         
 end_time = time.time()
- 
+               
 print(f"Epoch {epoch}:  Loss = {loss}:  Avg_Energy = {np.average(energy_epoch)}")
 
 timed = end_time - start_time
@@ -271,16 +269,16 @@ print(f"Total training time: {timed:.2f} seconds")
 file_path = "training_results.xlsx"
 
 results = pd.DataFrame({
-    'Loss': [loss.numpy()],
+    'Epochs': [epoch],
     'Training Time (s)': [timed]
     })
 
 with pd.ExcelWriter(file_path, mode='a', engine='openpyxl', if_sheet_exists='overlay') as writer:
     results.to_excel(writer, index=False, sheet_name="Sheet1", startrow=writer.sheets['Sheet1'].max_row, header=not os.path.exists(file_path))
-
+ 
 #-----------------------------------------------------------------------------#
 
-                    # Solving Numerically
+        # Solving Numerically
 
 #-----------------------------------------------------------------------------#    
  
@@ -308,17 +306,21 @@ plot1()
 plot2()
 phase_plot()
 
-
-
-yn = input("Output animations? (Enter y) : ")
+yn = input("Output animations? (Enter y for animations) : ")
 
 if yn == "y":
 
-    #-----------------------------------------------------------------------------#
+#-----------------------------------------------------------------------------#
+    
+        # Animations #
+    
+#-----------------------------------------------------------------------------#   
+
+    #-------------------------------------------------------------------------#
     
     # Animation_1  Energy vs Time evolution
     
-    #-----------------------------------------------------------------------------#
+    #-------------------------------------------------------------------------#
     
     # Create the figure and axis for the plot
     fig1, ax = plt.subplots(figsize=(8, 6))
@@ -355,11 +357,11 @@ if yn == "y":
     plt.legend()
     plt.show()  
     
-    #-----------------------------------------------------------------------------#
+    #-------------------------------------------------------------------------#
     
     # Animation_2  Theta vs Omega evolution
     
-    #-----------------------------------------------------------------------------#
+    #-------------------------------------------------------------------------#
     
     fig2, ax = plt.subplots(figsize=(8, 8))
     ax.set_xlim(-1, 1)  # Range for theta
@@ -394,11 +396,11 @@ if yn == "y":
     plt.legend()
     plt.show()  # Show the final plot if needed
     
-    #-----------------------------------------------------------------------------#
+    #-------------------------------------------------------------------------#
     
     # Animation_3  X vs Z plot
     
-    #-----------------------------------------------------------------------------#
+    #-------------------------------------------------------------------------#
     
     x = np.sin(theta_history[epoch - 1])
     z = -np.cos(theta_history[epoch - 1])

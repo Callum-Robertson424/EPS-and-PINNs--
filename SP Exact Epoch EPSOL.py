@@ -5,45 +5,43 @@ Spyder Editor
 This is a temporary script file.
 """
 
+# tensorflow and numpy packages
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras as tfk
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras.optimizers import Adam
+# matplotlib for plotting
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import matplotlib.cm as cm
 from scipy.integrate import solve_ivp
+# others for results
 import time
+import pandas as pd
+import os
 
-# Initial conditions
-theta0 = 1
-omega0 = 0
+#-----------------------------------------------------------------------------#
 
-# Swing time
-T = 12
+        # Initializing the model #
+
+#-----------------------------------------------------------------------------#
 
 def energy(omega, theta):
     energy = 0.5 * omega*omega + (1 - np.cos(theta))
     return(energy)
 
+# Trainable period variable
+p = tfk.Variable(6.701, dtype=tf.float32, trainable=True)  # Initial period
+
+#-----------------------------------------------------------------------------#
+
+        # Plots #
+                         
+#-----------------------------------------------------------------------------#
+
 def plot1():
-    # Find the exact solution of the Simple Pendulum
-    def pendulum(t, y):
-        theta, omega = y
-        dtheta_dt = omega
-        domega_dt = -np.sin(theta)  
-        return [dtheta_dt, domega_dt]
-
-    y0 = [(theta_pred[0].numpy())[0], (omega_pred[0].numpy())[0]]
-    t_span = (0, T)  
-    t_eval = np.linspace(*t_span, 1000)  # 1000 time points
-
-    solution = solve_ivp(pendulum, t_span, y0, t_eval=t_eval, method='RK45')
-
-    theta, omega = solution.y
-
     x = np.sin(theta_pred[:, 0])
     z = -np.cos(theta_pred[:, 0])
     
@@ -126,41 +124,20 @@ def plot2():
 
     plt.show
 
-def plot3():
-    plt.figure(figsize=(20,20))
-
-    plt.subplot(3, 1, 1)
-    plt.plot(p_history[-100:], lw=2, color='orange', label='Period per Epoch')
-    plt.title("Final 100 Period vs Epochs")
-    plt.xlabel("Epochs")
-    plt.ylabel("Period")
+def phase_plot():   
+    plt.figure(figsize=(10,10))
+    plt.plot(theta_pred, omega_pred, lw=4, linestyle = "--", color='orange', label='Predicted phase')
+    plt.plot(theta, omega, lw=1, color='blue', label="Exact Phase")
+    plt.title("Phase Plot (omega, theta)")
+    plt.xlabel("theta")
+    plt.ylabel("omega")
     plt.grid(True)
     plt.legend()
-
-    plt.subplot(3, 1, 2)
-    plt.plot(loss_history[-100:], lw=2, color='orange', label='Loss per Epoch')
-    plt.plot(np.zeros(100), lw=1, color='blue', label='Ideal Loss')
-    plt.title("Final 100 Loss vs Epochs")
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.legend()
-
-    plt.subplot(3, 1, 3)
-    plt.plot(energy_history[-100:], lw=3, color='orange', label='Energy per Epoch')
-    plt.plot(initial_energy * np.ones(100), lw=1, color='blue', label='Ideal Energy')
-    plt.title("Final 100 Energy vs Epochs")
-    plt.xlabel("Epochs")
-    plt.ylabel("Energy")
-    plt.legend()
-
     plt.show
-
-# Trainable period variable
-p = tfk.Variable(6.701, dtype=tf.float32, trainable=True)  # Initial guess for p
 
 #-----------------------------------------------------------------------------#
 
-# Custom Layer for NN 
+        # Custom Layer for NN 
 
 #-----------------------------------------------------------------------------#
 
@@ -180,7 +157,7 @@ class e_p_sol(tfk.layers.Layer):
 
 #-----------------------------------------------------------------------------#
 
-# Neural Network with 1 input and 2 outputs 
+        # PINN for a Single Pendulum # 
 
 #-----------------------------------------------------------------------------#
 
@@ -199,7 +176,7 @@ def build_model():
 
 #-----------------------------------------------------------------------------#
 
-# Loss Function for a Simple Pendulum 
+        # PILF for a Single Pendulum #
 
 #-----------------------------------------------------------------------------#
 
@@ -211,26 +188,27 @@ def physics_informed_loss(t, theta_pred, omega_pred):
         theta_pred = theta_omega[:, 0:1]
         omega_pred = theta_omega[:, 1:2]
     
-    # Compute d(theta)/dt and d(omega)/dt
+    # Calculate energy
+    energy_pred = energy(theta_pred, omega_pred)
+    
+    # Find derivatives
     dtheta_dt = tape.gradient(theta_pred, t)
     domega_dt = tape.gradient(omega_pred, t)
     
-    # PIL for both ODEs:
-    loss_theta = dtheta_dt - omega_pred
-    loss_omega = domega_dt + tf.sin(theta_pred)
+    # Physics-informed loss for both ODEs:
+    loss_theta = dtheta_dt/T - omega_pred
+    loss_omega = domega_dt/T + tf.sin(theta_pred)
 
-    # Use MSE to find the loss
+    # Combine the losses from both equations using MSE
     physics_loss = tf.reduce_mean(tf.square(loss_theta)) + tf.reduce_mean(tf.square(loss_omega))
-
+    
+    energy_loss = tf.reduce_mean(tf.square(energy_pred - initial_energy))
+    
     # Delete the tape to free memory
     del tape
     
-    # Energy conservation penalty
-    energy_pred = energy(omega_pred, theta_pred)  # Predicted energy at each time
-    energy_loss = tf.reduce_mean(tf.square(energy_pred - initial_energy))  # Penalize deviation from initial energy
+    energy_history.append(np.average(energy_epoch))
     
-    energy_history.append(np.average(energy_pred))
-
     return physics_loss + energy_loss  # Add energy loss with weight
 
 #-----------------------------------------------------------------------------#
@@ -239,8 +217,10 @@ def physics_informed_loss(t, theta_pred, omega_pred):
 
 #-----------------------------------------------------------------------------#
 
-# Swing time
-T = 12
+# Initial conditions
+theta0 = 1
+omega0 = 0
+T = 10
 
 # Generate training data
 t_train = np.linspace(0, T, 1000).reshape(-1, 1) # Sample points from the domain [0, T]
@@ -259,10 +239,6 @@ nrg = []
 theta_history = []
 omega_history = []
 p_history = []
-
-# Initial conditions
-theta0 = 1
-omega0 = 0
 
 initial_energy = energy(omega0, theta0)
 
@@ -299,7 +275,7 @@ while check == True:
     loss_history.append(loss.numpy())
     
     # Check if the loss is < 10^-2
-    if epoch > 1000:
+    if epoch > 250:
         check = False
     
     # Print the loss value periodically
@@ -314,16 +290,51 @@ print(f"Epoch: {epoch},     Loss: {loss},     avg_Energy: {np.average(energy_epo
 timed = end_time - start_time
 print(f"Total training time: {timed:.2f} seconds")
 
+#-----------------------------------------------------------------------------#
+
+        # Saving to Excel
 
 #-----------------------------------------------------------------------------#
 
-# Plots
+file_path = "training_results.xlsx"
+
+results = pd.DataFrame({
+    'Epochs': [epoch],
+    'Training Time (s)': [timed]
+    })
+
+with pd.ExcelWriter(file_path, mode='a', engine='openpyxl', if_sheet_exists='overlay') as writer:
+    results.to_excel(writer, index=False, sheet_name="Sheet1", startrow=writer.sheets['Sheet1'].max_row, header=not os.path.exists(file_path))
+
+#-----------------------------------------------------------------------------#
+
+        # Solving Numerically
+
+#-----------------------------------------------------------------------------#    
+ 
+def pendulum(t, y):
+    theta, omega = y
+    dtheta_dt = omega
+    domega_dt = -np.sin(theta)  
+    return [dtheta_dt, domega_dt]
+
+y0 = [(theta_pred[0].numpy())[0], (omega_pred[0].numpy())[0]]
+t_span = (0, T)  
+t_eval = np.linspace(*t_span, 1000)  # 1000 time points
+
+solution = solve_ivp(pendulum, t_span, y0, t_eval=t_eval, method='RK45')
+
+theta, omega = solution.y
+
+#-----------------------------------------------------------------------------#
+
+        # Plots
 
 #-----------------------------------------------------------------------------#
 
 plot1()
 plot2()
-plot3()
+phase_plot()
 
 #-----------------------------------------------------------------------------#
     
@@ -333,134 +344,136 @@ plot3()
 
 # yn = input("Output animations? (Enter y for animations) : ")
 
-# if yn == "y":
+yn = "n"
 
-#     #-------------------------------------------------------------------------#
+if yn == "y":
+
+    #-------------------------------------------------------------------------#
     
-#     # Animation_1  Energy vs Time evolution
+    # Animation_1  Energy vs Time evolution
     
-#     #-------------------------------------------------------------------------#
+    #-------------------------------------------------------------------------#
     
-#     # Create the figure and axis for the plot
-#     fig1, ax = plt.subplots(figsize=(8, 6))
-#     ax.set_xlim(0, np.max(t_train))  # Time range 
-#     ax.set_ylim(0, 1.1 * np.max(energy_history))  # Dynamic Y-axis for energy history
-#     ax.set_xlabel('Time')
-#     ax.set_ylabel('Energy')
-#     ax.set_title('Energy vs. Time')
-#     ax.legend()
+    # Create the figure and axis for the plot
+    fig1, ax = plt.subplots(figsize=(8, 6))
+    ax.set_xlim(0, np.max(t_train))  # Time range 
+    ax.set_ylim(0, 1.1 * np.max(energy_history))  # Dynamic Y-axis for energy history
+    ax.set_xlabel('Time')
+    ax.set_ylabel('Energy')
+    ax.set_title('Energy vs. Time')
+    ax.legend()
     
-#     # Create a line object that will be updated
-#     line, = ax.plot([], [], lw=3, color='orange', label='Current Prediction')
+    # Create a line object that will be updated
+    line, = ax.plot([], [], lw=3, color='orange', label='Current Prediction')
     
-#     # Define the update function for the animation
-#     def update1(frame):
+    # Define the update function for the animation
+    def update1(frame):
     
-#         # Update the plot with the energy for the current epoch
-#         line.set_data(t_train, nrg[frame])
+        # Update the plot with the energy for the current epoch
+        line.set_data(t_train, nrg[frame])
     
-#         # Optionally update the title with the epoch number (frame)
-#         ax.set_title(f'Energy vs. Time (Epoch {frame + 1})')
+        # Optionally update the title with the epoch number (frame)
+        ax.set_title(f'Energy vs. Time (Epoch {frame + 1})')
     
-#         return line, ax.legend(),
+        return line, ax.legend(),
     
-#     # Set up the animation
-#     ani = animation.FuncAnimation(
-#         fig1, update1, frames=epoch, interval=200, blit=True
-#     )
+    # Set up the animation
+    ani = animation.FuncAnimation(
+        fig1, update1, frames=epoch, interval=200, blit=True
+    )
     
-#     plt.plot(initial_energy * np.ones(epoch), lw=1, color='blue', label='End Goal')
+    plt.plot(initial_energy * np.ones(epoch), lw=1, color='blue', label='End Goal')
     
-#     # Save the animation as a GIF
-#     ani.save('SP_Animation_1.gif', writer='imagemagick', fps=50)
-#     plt.legend()
-#     plt.show()  
+    # Save the animation as a GIF
+    ani.save('SP_Animation_1.gif', writer='imagemagick', fps=50)
+    plt.legend()
+    plt.show()  
     
-#     #-------------------------------------------------------------------------#
+    #-------------------------------------------------------------------------#
     
-#     # Animation_2  Theta vs Omega evolution
+    # Animation_2  Theta vs Omega evolution
     
-#     #-------------------------------------------------------------------------#
+    #-------------------------------------------------------------------------#
     
-#     fig2, ax = plt.subplots(figsize=(8, 8))
-#     ax.set_xlim(-1, 1)  # Range for theta
-#     ax.set_ylim(-1, 1)  # Range for omega
-#     ax.set_xlabel('Omega')
-#     ax.set_ylabel('Theta')
-#     ax.set_title('Phase Plot (Omega vs Theta)')
+    fig2, ax = plt.subplots(figsize=(8, 8))
+    ax.set_xlim(-1, 1)  # Range for theta
+    ax.set_ylim(-1, 1)  # Range for omega
+    ax.set_xlabel('Omega')
+    ax.set_ylabel('Theta')
+    ax.set_title('Phase Plot (Omega vs Theta)')
     
-#     # Create a line object that will be updated
-#     line, = ax.plot([], [], lw=3, color='orange', label='Current Prediction')
+    # Create a line object that will be updated
+    line, = ax.plot([], [], lw=3, color='orange', label='Current Prediction')
     
-#     # Define the update function for the animation
-#     def update2(frame):
+    # Define the update function for the animation
+    def update2(frame):
     
-#         # Update the plot with theta and omega for the current epoch
-#         line.set_data(theta_history[frame], omega_history[frame])
+        # Update the plot with theta and omega for the current epoch
+        line.set_data(theta_history[frame], omega_history[frame])
     
-#         # Optionally update the title with the epoch number (frame)
-#         ax.set_title(f'Theta vs. Omega (Epoch {frame + 1})')
+        # Optionally update the title with the epoch number (frame)
+        ax.set_title(f'Theta vs. Omega (Epoch {frame + 1})')
     
-#         return line, ax.legend(),
+        return line, ax.legend(),
     
-#     # Set up the animation
-#     ani = animation.FuncAnimation(
-#         fig2, update2, frames=epoch, interval=200, blit=True
-#     )
+    # Set up the animation
+    ani = animation.FuncAnimation(
+        fig2, update2, frames=epoch, interval=200, blit=True
+    )
     
-#     plt.plot(np.cos(np.linspace(0, 2 * np.pi, 1000)), np.sin(np.linspace(0, 2 * np.pi, 1000)), lw=1, label='End Goal', color='blue')
+    plt.plot(np.cos(np.linspace(0, 2 * np.pi, 1000)), np.sin(np.linspace(0, 2 * np.pi, 1000)), lw=1, label='End Goal', color='blue')
     
-#     # Save the animation as a GIF
-#     ani.save('SP_Animation_2.gif', writer='imagemagick', fps=50)
-#     plt.legend()
-#     plt.show()  # Show the final plot if needed
+    # Save the animation as a GIF
+    ani.save('SP_Animation_2.gif', writer='imagemagick', fps=50)
+    plt.legend()
+    plt.show()  # Show the final plot if needed
     
-#     #-------------------------------------------------------------------------#
+    #-------------------------------------------------------------------------#
     
-#     # Animation_3  X vs Z plot
+    # Animation_3  X vs Z plot
     
-#     #-------------------------------------------------------------------------#
+    #-------------------------------------------------------------------------#
     
-#     x = np.sin(theta_history[epoch - 1])
-#     z = -np.cos(theta_history[epoch - 1])
+    x = np.sin(theta_history[epoch - 1])
+    z = -np.cos(theta_history[epoch - 1])
     
-#     # Set up the figure for animation
-#     fig3, ax = plt.subplots(figsize=(8, 8))
-#     ax.set_xlim(-1.25, 1.25)
-#     ax.set_ylim(-2, 0.5)
-#     ax.set_aspect('equal', 'box')
-#     ax.axhline(0, color='black', linewidth=0.5)
-#     ax.axvline(0, color='black', linewidth=0.5)
-#     ax.set_title('Pendulum Plot')
-#     ax.set_xlabel('X')
-#     ax.set_ylabel('Z')
-#     ax.legend()
+    # Set up the figure for animation
+    fig3, ax = plt.subplots(figsize=(8, 8))
+    ax.set_xlim(-1.25, 1.25)
+    ax.set_ylim(-2, 0.5)
+    ax.set_aspect('equal', 'box')
+    ax.axhline(0, color='black', linewidth=0.5)
+    ax.axvline(0, color='black', linewidth=0.5)
+    ax.set_title('Pendulum Plot')
+    ax.set_xlabel('X')
+    ax.set_ylabel('Z')
+    ax.legend()
     
-#     # Plot the initial points
-#     line, = ax.plot([], [], 'o-', color='orange', lw=2, label='Pendulum')
+    # Plot the initial points
+    line, = ax.plot([], [], 'o-', color='orange', lw=2, label='Pendulum')
     
-#     # Define the initialization function for the animation
-#     def init():
-#         line.set_data([], [])
-#         return line, 
+    # Define the initialization function for the animation
+    def init():
+        line.set_data([], [])
+        return line, 
     
-#     # Define the update function for the animation
-#     def update3(frame):
-#         # Update positions for both pendulums at the current frame
-#         x_frame = float(x[frame + 1])
-#         z_frame = float(z[frame + 1])
+    # Define the update function for the animation
+    def update3(frame):
+        # Update positions for both pendulums at the current frame
+        x_frame = float(x[frame + 1])
+        z_frame = float(z[frame + 1])
         
-#         # Update the line data for the pendulums
-#         line.set_data([0, x_frame], [0, z_frame])  # Pendulum 
+        # Update the line data for the pendulums
+        line.set_data([0, x_frame], [0, z_frame])  # Pendulum 
         
-#         ax.set_title(f'Pendulum Plot (Position {frame + 1})')
+        ax.set_title(f'Pendulum Plot (Position {frame + 1})')
         
-#         return line, ax.legend(),
+        return line, ax.legend(),
     
-#     # Create the animation
-#     ani = animation.FuncAnimation(fig3, update3, frames=999, init_func=init, blit=True, interval = T)
+    # Create the animation
+    ani = animation.FuncAnimation(fig3, update3, frames=999, init_func=init, blit=True, interval = T)
     
-#     ani.save('SP_Animation_3.gif', writer='Pillow', fps = 50)
+    ani.save('SP_Animation_3.gif', writer='Pillow', fps = 50)
     
-#     # Show the animation
-#     plt.show()
+    # Show the animation
+    plt.show()

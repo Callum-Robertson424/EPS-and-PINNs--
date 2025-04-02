@@ -11,10 +11,7 @@ import tensorflow.keras as tfk
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.initializers import Initializer
-import tensorflow.keras.backend as K
-
-
+from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import matplotlib.cm as cm
@@ -22,7 +19,7 @@ import winsound as ws
 
 #-----------------------------------------------------------------------------#
 
-                                # Take inputs #
+        # Define Range #
 
 #-----------------------------------------------------------------------------#
 
@@ -31,13 +28,12 @@ it = 24*T
 
 #-----------------------------------------------------------------------------#
 
-                            # Initializing the model #
+        # Initializing the model #
 
 #-----------------------------------------------------------------------------#
 
-# Trainable period variable
-n = 2       # set n =/= 1, for EnPS
-p = tfk.Variable(n*8.344828605651855, dtype=tf.float32, trainable=True)   
+# family 1 :8.3433, family 2 :12.223955154418945
+p = tfk.Variable(8.3433, dtype=tf.float32, trainable=True)   
 
 def energy_func(theta1, theta2, omega1, omega2):
     c1 = np.cos(theta1)
@@ -49,23 +45,24 @@ def energy_func(theta1, theta2, omega1, omega2):
 
 #-----------------------------------------------------------------------------#
 
-                           # Parameters for training #
-
-#-----------------------------------------------------------------------------#
-
-initial_energy = 0.5
-final_energy = 0.5
-err = 0.0000001
-
-#-----------------------------------------------------------------------------#
-
-                         # Plots to pull from training #
+        # Plots #
                          
 #-----------------------------------------------------------------------------#
 
-def plot2(p_history, loss_history, epoch, energy_history, initial_energy):
+def plot1():
+    plt.figure(figsize=(10,10))
+    plt.plot(theta1_pred, omega1_pred, lw=4, color='orange', label='Predicted phase top')
+    plt.plot(theta2_pred, omega2_pred, lw=4, color='chocolate', label='Predicted phase bottom')
+    plt.plot(theta1, omega1, lw=1, color='blue', label="Exact Phase top")
+    plt.plot(theta2, omega2, lw=1, color='navy', label="Exact Phase bottom")
+    plt.title("Phase Plot (omega, theta)")
+    plt.xlabel("theta")
+    plt.ylabel("omega")
+    plt.grid(True)
+    plt.legend()
+    plt.show
 
-    
+def plot2():
     plt.figure(figsize=(20,20))
     
     plt.subplot(3, 1, 1)
@@ -96,7 +93,7 @@ def plot2(p_history, loss_history, epoch, energy_history, initial_energy):
     
     return(plt.show())
 
-def plot3(p_history, loss_history, epoch, energy_history, initial_energy):    
+def plot3():    
     plt.figure(figsize=(20,20))
     
     plt.subplot(3, 1, 1)
@@ -125,7 +122,7 @@ def plot3(p_history, loss_history, epoch, energy_history, initial_energy):
     
     return(plt.show())
 
-def plot4(theta1_pred, theta2_pred, omega1_pred, omega2_pred):
+def plot4():
     fig = plt.figure(figsize=(14, 18))
 
     ax1 = fig.add_subplot(121, projection='3d')
@@ -138,12 +135,18 @@ def plot4(theta1_pred, theta2_pred, omega1_pred, omega2_pred):
     
     return(plt.show())
 
-def plot5(theta1_pred, theta2_pred, omega1_pred, omega2_pred):
+def plot5():
+
     # Pendulum positions
     x1 = np.sin(theta1_pred[:,0])
     z1 = -np.cos(theta1_pred[:,0])
     x2 = np.sin(theta1_pred[:,0]) + np.sin(theta2_pred[:,0])
     z2 = -np.cos(theta1_pred[:,0]) - np.cos(theta2_pred[:,0])
+    
+    x1t = np.sin(theta1)
+    z1t = -np.cos(theta1)
+    x2t = np.sin(theta1) + np.sin(theta2)
+    z2t = -np.cos(theta1) - np.cos(theta2)
 
     #number of "fades"
     num_positions = 6
@@ -162,36 +165,77 @@ def plot5(theta1_pred, theta2_pred, omega1_pred, omega2_pred):
     axs[0].axvline(0, color='black', linewidth=0.5)
     axs[0].set_xlabel('X')
     axs[0].set_ylabel('Z')
-    axs[0].set_title('Double Pendulum Fade Plot')
+    axs[0].set_title('PINN Solution')
+
+    axs[1].set_xlim(-3, 3)
+    axs[1].set_ylim(-3, 3)
+    axs[1].set_aspect('equal', 'box')
+    axs[1].axhline(0, color='black', linewidth=0.5)
+    axs[1].axvline(0, color='black', linewidth=0.5)
+    axs[1].set_xlabel('X')
+    axs[1].set_ylabel('Z')
+    axs[1].set_title('RK45 Solution')
 
     # Plot multiple positions with fading effect
     for i, idx in enumerate(indices):
         axs[0].plot([0, x1[idx]], [0, z1[idx]], 'o-', color=colors[i], lw=2, alpha=0.8)  # Pendulum 1
         axs[0].plot([x1[idx], x2[idx]], [z1[idx], z2[idx]], 'o-', color=colors2[i], lw=2, alpha=0.8)  # Pendulum 2
-        
-    axs[1].plot(theta1_pred, omega1_pred, color = 'blue')
-    axs[1].plot(theta2_pred, omega2_pred, color = 'orange')
-    axs[1].set_title("Phase Plot")
-    axs[1].set_xlabel("theta")
-    axs[1].set_ylabel("omega")
-    axs[1].set_xlim(-0.7, 0.7)
-    axs[1].set_ylim(-0.7, 0.7)
-    axs[1].set_aspect('equal', 'box')
-        
-    plt.show()
+        axs[1].plot([0, x1t[idx]], [0, z1t[idx]], 'o-', color=colors[i], lw=2, alpha=0.8)  # Pendulum 1
+        axs[1].plot([x1t[idx], x2t[idx]], [z1t[idx], z2t[idx]], 'o-', color=colors2[i], lw=2, alpha=0.8)  # Pendulum 2
+
+def check_plot():
+
+    plt.figure(figsize=(20,40))
+    
+    plt.subplot(6, 1, 1)
+    plt.plot(theta1, lw=1, color='blue', label='RK23 theta1')
+    plt.plot(theta1_pred, lw=2, color='orange', label='PINN theta1')
+    plt.title("theta1 vs t")
+    plt.xlabel("theta1")
+    plt.ylabel("t")
+    plt.legend()
+
+    plt.subplot(6, 1, 2)
+    plt.plot(theta2, lw=1, color='blue', label='RK23 theta1')
+    plt.plot(theta2_pred, lw=2, color='orange', label='PINN theta1')
+    plt.title("theta2 vs t")
+    plt.xlabel("theta2")
+    plt.ylabel("t")
+    plt.legend()
+    
+    plt.subplot(6, 1, 3)
+    plt.plot(omega1, lw=1, color='blue', label='RK23 theta1')
+    plt.plot(omega1_pred, lw=2, color='orange', label='PINN theta1')
+    plt.title("omega1 vs t")
+    plt.xlabel("omega1")
+    plt.ylabel("t")
+    plt.legend()
+    
+    plt.subplot(6, 1, 4)
+    plt.plot(omega2, lw=1, color='blue', label='RK23 theta1')
+    plt.plot(omega2_pred, lw=2, color='orange', label='PINN theta1')
+    plt.title("omega2 vs t")
+    plt.xlabel("omega2")
+    plt.ylabel("t")
+    plt.legend()   
+    
+    plt.plot
 
 #-----------------------------------------------------------------------------#
 
-# Custom Layer for NN 
+        # Custom Layer for NN #
 
 #-----------------------------------------------------------------------------#
+
 
 class e_p_sol(tfk.layers.Layer):
     def __init__(self, **kwargs):
         super(e_p_sol, self).__init__(**kwargs)
 
+    # family 1 solns : s = (2* np.pi * inputs) / p, 
+    # family 2 solns : s = (2* 8.3433 * inputs) / p
     def call(self, inputs):  
-        s = (2 * np.pi * inputs) / p # Compute sin and cos of the input
+        s = (2* 8.3433 * inputs) / p # Compute sin and cos of the input  8.34483
         sin_out = tf.sin(s)
         cos_out = tf.cos(s)
         return tf.concat([sin_out, cos_out], axis=-1)
@@ -202,34 +246,11 @@ class e_p_sol(tfk.layers.Layer):
 
 #-----------------------------------------------------------------------------#
 
-# Custom Initialization for NN 
-
-#-----------------------------------------------------------------------------#
-
-M = 0       # mean
-SD = 2      # standard deviation
-MV = 1    # max value
-mv = -MV    # min value
-
-class initialized_points(Initializer):
-    def __init__(self, mean = M, stddev = SD, minval = mv, maxval = MV):
-        self.mean = mean
-        self.stddev = stddev
-        self.minval = minval
-        self.maxval = maxval
-
-    def __call__(self, shape, dtype=None):
-        values = K.random_normal(shape, mean=self.mean, stddev=self.stddev, dtype=dtype)
-        return tf.clip_by_value(values, self.minval, self.maxval)  
-
-#-----------------------------------------------------------------------------#
-
-                         # PINN for double pendulum #
+        # PINN for a Double Pendulum #
 
 #-----------------------------------------------------------------------------#
 
 def build_model():
-    circular_init = initialized_points(mean = M, stddev = SD, minval = mv, maxval = MV)
     model = Sequential([
         Input(shape=(1,)), # Input is time t
         e_p_sol(),
@@ -238,13 +259,16 @@ def build_model():
         Dense(100, activation='swish', bias_initializer='lecun_uniform'),
         Dense(100, activation='swish', bias_initializer='lecun_uniform'),
         Dense(100, activation='swish', bias_initializer='lecun_uniform'),
-        Dense(6, activation='linear',
-              kernel_initializer=circular_init,   # Custom init for circle
-              bias_initializer=circular_init) , 
+        Dense(6, activation='linear'),
     ])
     return model
 
-                              # Loss Function #
+
+#-----------------------------------------------------------------------------#
+
+        # PILF for double pendulum #
+
+#-----------------------------------------------------------------------------#
 
 def physics_informed_loss(t, theta1_pred, theta2_pred, omega1_pred, omega2_pred, tau1_pred, tau2_pred):
     with tf.GradientTape(persistent=True) as tape:
@@ -256,49 +280,47 @@ def physics_informed_loss(t, theta1_pred, theta2_pred, omega1_pred, omega2_pred,
         omega2_pred = X2Pendulum[:, 3:4]
         tau1_pred = X2Pendulum[:, 4:5]
         tau2_pred = X2Pendulum[:, 5:6]
-
+        
+    # Calculate energy
+    energy_pred = energy_func(theta1_pred, theta2_pred, omega1_pred, omega2_pred)
+    
+    # Calculate differentials
     dtheta1_dt = tape.gradient(theta1_pred, t)
     dtheta2_dt = tape.gradient(theta2_pred, t)
     domega1_dt = tape.gradient(omega1_pred, t)
     domega2_dt = tape.gradient(omega2_pred, t)
     
-                   # Physics-informed loss for all ODEs # 
-    
+    # Physics-informed loss for all ODEs 
     loss_theta1 = dtheta1_dt - omega1_pred
     loss_theta2 = dtheta2_dt - omega2_pred
     loss_omega1 = tau2_pred * tf.sin(theta2_pred - theta1_pred) - tf.sin(theta1_pred) - domega1_dt
     loss_omega2 = -tau1_pred * tf.sin(theta2_pred - theta1_pred) - domega2_dt 
     
-                   # Physics-informed loss for tension properties #
-    
+    # Physics-informed loss for other properties
     loss_tau1 = tau1_pred - tf.cos(theta2_pred - theta1_pred) * tau2_pred - (omega1_pred) ** 2 - tf.cos(omega1_pred)
     loss_tau2 = 2 * tau2_pred - tf.cos(theta2_pred - theta1_pred) * tau1_pred - (omega2_pred) ** 2
+    energy_loss = energy_pred - initial_energy
     
-    avg_theta1 = tf.reduce_mean(tf.square(loss_theta1))
-    avg_theta2 = tf.reduce_mean(tf.square(loss_theta2))
-    avg_omega1 = tf.reduce_mean(tf.square(loss_omega1))
-    avg_omega2 = tf.reduce_mean(tf.square(loss_omega2))
-    avg_tau1 = tf.reduce_mean(tf.square(loss_tau1))
-    avg_tau2 = tf.reduce_mean(tf.square(loss_tau2)) 
-     
-    physics_loss = avg_omega1 + avg_omega2 + avg_theta1 + avg_theta2 + avg_tau1 + avg_tau2
+    # Mean Square Error of loss terms
+    mse_theta1 = tf.reduce_mean(tf.square(loss_theta1))
+    mse_theta2 = tf.reduce_mean(tf.square(loss_theta2))
+    mse_omega1 = tf.reduce_mean(tf.square(loss_omega1))
+    mse_omega2 = tf.reduce_mean(tf.square(loss_omega2))
+    mse_tau1 = tf.reduce_mean(tf.square(loss_tau1))
+    mse_tau2 = tf.reduce_mean(tf.square(loss_tau2)) 
+    mse_energy = tf.reduce_mean(tf.square(energy_loss))
+    
+    physics_error = mse_omega1 + mse_omega2 + mse_theta1 + mse_theta2 + mse_tau1 + mse_tau2
+    
+    del tape  # Free memory
 
-    del tape  # Delete the tape to free memory
-    
-    # Energy conservation penalty
-    energy_pred = energy_func(theta1_pred, theta2_pred, omega1_pred, omega2_pred)  # Predicted energy at each time
-    energy_loss = tf.reduce_mean(tf.square(energy_pred - initial_energy))  # Penalize deviation from initial energy
-    
     energy_history.append(np.average(energy_pred))
 
-    return(physics_loss + 0.8*energy_loss)  # Add energy loss with weight
-
-    
-    return(plt.show)
+    return(physics_error + mse_energy)  # return the total error
 
 #-----------------------------------------------------------------------------#
 
-            # Creating the time vector and compiling the model #
+        # Creating variables and compiling the model
 
 #-----------------------------------------------------------------------------#
 
@@ -311,7 +333,9 @@ t_train_tensor = tf.convert_to_tensor(t_train, dtype=tf.float32)
 # Build and compile the model
 model = build_model()
 optimizer = Adam(learning_rate=0.001)
-model.load_weights('model.weights.h5')
+
+# Use some trained weights 
+# model.load_weights('model.weights.h5')
 
 # Extra lists and variables for plotting
 loss_history = []
@@ -323,14 +347,17 @@ theta2_history = []
 omega1_history = []
 omega2_history = []
 
+# Choose initial energy
+initial_energy = 0.5
+
 #-----------------------------------------------------------------------------#
 
-                         # Create the training loop #
+        # Training Loop #
 
 #-----------------------------------------------------------------------------#
+
+# Variables for training
 epoch = 0
-tepoch = 0
-prev_epoch = 0
 loss = 2
 check = True
 
@@ -347,8 +374,7 @@ while check == True:
 
         # Physics-informed loss
         loss = physics_informed_loss(t_train_tensor, theta1_pred, theta2_pred, omega1_pred, omega2_pred, tau1_pred, tau2_pred)
-        #ic_loss = tf.reduce_mean(tf.square(theta1_pred[0] - theta1_0)) + tf.reduce_mean(tf.square(theta2_pred[0] - theta2_0)) + tf.reduce_mean(tf.square(omega1_pred[0] - omega1_0)) + tf.reduce_mean(tf.square(omega2_pred[0] - omega2_0)) 
-        loss = loss #+ ic_loss
+        loss = loss
         
     # Compute gradients to train the model alongside optimizer 
     gradients = tape.gradient(loss, model.trainable_variables + [p])
@@ -365,7 +391,7 @@ while check == True:
     loss_history.append(loss.numpy())
          
     # exiting criteria when training is extended     
-    if epoch == 10000:
+    if epoch == 2:
         check = False
         epoch = epoch - 1
     
@@ -374,18 +400,65 @@ while check == True:
         print(f"Epoch: {epoch},     Loss: {loss},     avg_Energy: {np.average(energy_epoch)},     p_val: {p.numpy()}.")
         
     epoch = epoch + 1
-    tepoch = tepoch + 1
 
 #-----------------------------------------------------------------------------#
 
-                        # Plotting the entire training
+        # Solving Numerically
 
 #-----------------------------------------------------------------------------#
 
-plot5(theta1_pred, theta2_pred, omega1_pred, omega2_pred)
-plot2(p_history, loss_history, epoch, energy_history, initial_energy)
-plot3(p_history, loss_history, epoch, energy_history, initial_energy)
-plot4(theta1_pred, theta2_pred, omega1_pred, omega2_pred)
+# Use the initial conditions from the PINN
+y0 = [
+    (theta1_pred[0].numpy())[0], 
+    (theta2_pred[0].numpy())[0], 
+    (omega1_pred[0].numpy())[0], 
+    (omega2_pred[0].numpy())[0]  
+]
+
+def double_pendulum(t, y):
+    theta1, theta2, omega1, omega2 = y
+    
+    # solve for tau1, tau2 
+    A = np.array([
+        [1, -np.cos(theta2 - theta1)],
+        [-0.5 * np.cos(theta2 - theta1), 1]
+        ])
+
+    b = np.array([
+        omega1**2 + np.cos(omega1),
+        omega2**2 / 2
+        ])
+
+    tau1, tau2 = np.linalg.solve(A, b)
+    
+    # Define the governing equations
+    dtheta1_dt = omega1
+    dtheta2_dt = omega2
+    domega1_dt = tau2 * np.sin(theta2 - theta1) - np.sin(theta1)
+    domega2_dt = -tau1 * np.sin(theta2 - theta1)
+    
+    return [dtheta1_dt, dtheta2_dt, domega1_dt, domega2_dt]
+
+t_eval = np.linspace(0, T, it)
+
+# Solve using solve_ivp
+solution = solve_ivp(double_pendulum, (0, T), y0, t_eval= t_eval, method='RK45')
+
+# Extract solutions
+theta1, theta2, omega1, omega2 = solution.y
+
+#-----------------------------------------------------------------------------#
+
+        # Plots
+
+#-----------------------------------------------------------------------------#
+
+plot5()
+plot2()
+plot3()
+plot4()
+plot1()
+check_plot()
 
 #-----------------------------------------------------------------------------#
 
@@ -486,9 +559,9 @@ if yn == "y":
     
         return line, ax.legend(),
     
-    if tepoch < 1000:
+    if epoch < 1000:
         ani = animation.FuncAnimation(
-            fig2, update2, frames = tepoch, interval = 200, blit=True)
+            fig2, update2, frames = epoch, interval = 200, blit=True)
     else:
         ani = animation.FuncAnimation(
             fig2, update2, frames=range(0, len(nrg), 10), interval = 200, blit=True)
@@ -530,9 +603,9 @@ if yn == "y":
     
         return line1, line2, ax.legend(),
     
-    if tepoch < 1000:
+    if epoch < 1000:
         ani = animation.FuncAnimation(
-            fig3, update3, frames = tepoch, interval = 200, blit=True)
+            fig3, update3, frames = epoch, interval = 200, blit=True)
     else:
         ani = animation.FuncAnimation(
             fig3, update3, frames=range(0, len(theta1_history), 10), interval = 200, blit=True)
