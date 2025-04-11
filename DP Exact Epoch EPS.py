@@ -33,7 +33,7 @@ it = 24*T
 #-----------------------------------------------------------------------------#
 
 # family 1 :8.3433, family 2 :12.223955154418945
-p = tfk.Variable(8.3433, dtype=tf.float32, trainable=True)   
+p = tfk.Variable(8.3433, dtype=tf.float32, trainable=True)
 
 def energy_func(theta1, theta2, omega1, omega2):
     c1 = np.cos(theta1)
@@ -55,11 +55,12 @@ def phase_plot():
     plt.plot(theta2_pred, omega2_pred, lw=4, color='chocolate', label='Predicted phase bottom')
     plt.plot(theta1, omega1, lw=1, color='blue', label="Exact Phase top")
     plt.plot(theta2, omega2, lw=1, color='navy', label="Exact Phase bottom")
-    plt.title("Phase Plot (omega, theta)")
-    plt.xlabel("theta")
-    plt.ylabel("omega")
+    plt.title("Phase Plot (omega, theta)", fontsize=20)
+    plt.xlabel("theta", fontsize=20)
+    plt.ylabel("omega", fontsize=20)
     plt.grid(True)
-    plt.legend()
+    plt.tick_params(axis='both', labelsize=20)
+    plt.legend(fontsize=20)
     plt.show
 
 def training_plot():
@@ -135,7 +136,6 @@ def three_d_phase_plot():
     return(plt.show())
 
 def fade_plot():
-
     # Pendulum positions
     x1 = np.sin(theta1_pred[:,0])
     z1 = -np.cos(theta1_pred[:,0])
@@ -147,40 +147,38 @@ def fade_plot():
     x2t = np.sin(theta1) + np.sin(theta2)
     z2t = -np.cos(theta1) - np.cos(theta2)
 
-    #number of "fades"
+    # Number of "fades"
     num_positions = 6
-    indices = np.linspace(0, 80, num_positions, dtype=int)  # Select 8 evenly spaced frames within the first 300
+    indices = np.linspace(0, 80, num_positions, dtype=int)
 
     # Fade effect using a colormap
-    colors = cm.Blues(np.linspace(0.1, 1, num_positions))  # Blue shades for pendulum 1
-    colors2 = cm.Oranges(np.linspace(0.1, 1, num_positions))  # Orange shades for pendulum 2
+    colors = cm.Blues(np.linspace(0.1, 1, num_positions))
+    colors2 = cm.Oranges(np.linspace(0.1, 1, num_positions))
 
     # Set up the figure
     fig, axs = plt.subplots(1, 2, figsize=(18, 8))
-    axs[0].set_xlim(-3, 3)
-    axs[0].set_ylim(-3, 3)
-    axs[0].set_aspect('equal', 'box')
-    axs[0].axhline(0, color='black', linewidth=0.5)
-    axs[0].axvline(0, color='black', linewidth=0.5)
-    axs[0].set_xlabel('X')
-    axs[0].set_ylabel('Z')
-    axs[0].set_title('PINN Solution')
+    for ax in axs:
+        ax.set_xlim(-3, 3)
+        ax.set_ylim(-3, 3)
+        ax.set_aspect('equal', 'box')
+        ax.axhline(0, color='black', linewidth=0.5)
+        ax.axvline(0, color='black', linewidth=0.5)
+        ax.set_xlabel('X', fontsize=20)
+        ax.set_ylabel('Z', fontsize=20)
+        ax.tick_params(axis='both', which='major', labelsize=20)
 
-    axs[1].set_xlim(-3, 3)
-    axs[1].set_ylim(-3, 3)
-    axs[1].set_aspect('equal', 'box')
-    axs[1].axhline(0, color='black', linewidth=0.5)
-    axs[1].axvline(0, color='black', linewidth=0.5)
-    axs[1].set_xlabel('X')
-    axs[1].set_ylabel('Z')
-    axs[1].set_title('RK45 Solution')
+    axs[0].set_title('PINN Solution', fontsize=20)
+    axs[1].set_title('RK45 Solution', fontsize=20)
 
     # Plot multiple positions with fading effect
     for i, idx in enumerate(indices):
-        axs[0].plot([0, x1[idx]], [0, z1[idx]], 'o-', color=colors[i], lw=2, alpha=0.8)  # Pendulum 1
-        axs[0].plot([x1[idx], x2[idx]], [z1[idx], z2[idx]], 'o-', color=colors2[i], lw=2, alpha=0.8)  # Pendulum 2
-        axs[1].plot([0, x1t[idx]], [0, z1t[idx]], 'o-', color=colors[i], lw=2, alpha=0.8)  # Pendulum 1
-        axs[1].plot([x1t[idx], x2t[idx]], [z1t[idx], z2t[idx]], 'o-', color=colors2[i], lw=2, alpha=0.8)  # Pendulum 2
+        axs[0].plot([0, x1[idx]], [0, z1[idx]], 'o-', color=colors[i], lw=2, alpha=0.8)
+        axs[0].plot([x1[idx], x2[idx]], [z1[idx], z2[idx]], 'o-', color=colors2[i], lw=2, alpha=0.8)
+        axs[1].plot([0, x1t[idx]], [0, z1t[idx]], 'o-', color=colors[i], lw=2, alpha=0.8)
+        axs[1].plot([x1t[idx], x2t[idx]], [z1t[idx], z2t[idx]], 'o-', color=colors2[i], lw=2, alpha=0.8)
+
+    plt.tight_layout()
+    plt.show()
 
 def check_plot():
 
@@ -227,20 +225,20 @@ def check_plot():
 #-----------------------------------------------------------------------------#
 
 
-class e_p_sol(tfk.layers.Layer):
+class EPS_layer(tfk.layers.Layer):
     def __init__(self, **kwargs):
-        super(e_p_sol, self).__init__(**kwargs)
+        super(EPS_layer, self).__init__(**kwargs)
 
     # family 1 solns : s = (2* np.pi * inputs) / p, 
     # family 2 solns : s = (2* 8.3433 * inputs) / p
     def call(self, inputs):  
-        s = (2* 8.3433 * inputs) / p # Compute sin and cos of the input  8.34483
+        s = (2*np.pi * inputs) / p 
         sin_out = tf.sin(s)
         cos_out = tf.cos(s)
         return tf.concat([sin_out, cos_out], axis=-1)
 
     def get_config(self):
-        config = super(e_p_sol, self).get_config()
+        config = super(EPS_layer, self).get_config()
         return config  
 
 #-----------------------------------------------------------------------------#
@@ -252,7 +250,7 @@ class e_p_sol(tfk.layers.Layer):
 def build_model():
     model = Sequential([
         Input(shape=(1,)), # Input is time t
-        e_p_sol(),
+        EPS_layer(),
         Dense(100, activation='swish', bias_initializer='lecun_uniform'),
         Dense(100, activation='swish', bias_initializer='lecun_uniform'),
         Dense(100, activation='swish', bias_initializer='lecun_uniform'),
@@ -280,9 +278,6 @@ def physics_informed_loss(t, theta1_pred, theta2_pred, omega1_pred, omega2_pred,
         tau1_pred = X2Pendulum[:, 4:5]
         tau2_pred = X2Pendulum[:, 5:6]
         
-    # Calculate energy
-    energy_pred = energy_func(theta1_pred, theta2_pred, omega1_pred, omega2_pred)
-    
     # Calculate differentials
     dtheta1_dt = tape.gradient(theta1_pred, t)
     dtheta2_dt = tape.gradient(theta2_pred, t)
@@ -298,7 +293,6 @@ def physics_informed_loss(t, theta1_pred, theta2_pred, omega1_pred, omega2_pred,
     # Physics-informed loss for other properties
     loss_tau1 = tau1_pred - tf.cos(theta2_pred - theta1_pred) * tau2_pred - (omega1_pred) ** 2 - tf.cos(omega1_pred)
     loss_tau2 = 2 * tau2_pred - tf.cos(theta2_pred - theta1_pred) * tau1_pred - (omega2_pred) ** 2
-    energy_loss = energy_pred - initial_energy
     
     # Mean Square Error of loss terms
     mse_theta1 = tf.reduce_mean(tf.square(loss_theta1))
@@ -307,12 +301,15 @@ def physics_informed_loss(t, theta1_pred, theta2_pred, omega1_pred, omega2_pred,
     mse_omega2 = tf.reduce_mean(tf.square(loss_omega2))
     mse_tau1 = tf.reduce_mean(tf.square(loss_tau1))
     mse_tau2 = tf.reduce_mean(tf.square(loss_tau2)) 
-    mse_energy = tf.reduce_mean(tf.square(energy_loss))
     
     physics_error = mse_omega1 + mse_omega2 + mse_theta1 + mse_theta2 + mse_tau1 + mse_tau2
     
     del tape  # Free memory
-
+    
+    # Energy calculations outside of tape
+    energy_pred = energy_func(theta1_pred, theta2_pred, omega1_pred, omega2_pred)
+    energy_loss = energy_pred - initial_energy
+    mse_energy = tf.reduce_mean(tf.square(energy_loss))
     energy_history.append(np.average(energy_pred))
 
     return(physics_error + mse_energy)  # return the total error
@@ -334,7 +331,7 @@ model = build_model()
 optimizer = Adam(learning_rate=0.001)
 
 # Use some trained weights 
-# model.load_weights('model.weights.h5')
+#model.load_weights('model_v2.weights.h5')
 
 # Extra lists and variables for plotting
 loss_history = []
@@ -390,7 +387,7 @@ while check == True:
     loss_history.append(loss.numpy())
          
     # exiting criteria when training is extended     
-    if epoch == 2:
+    if epoch == 1000:
         check = False
         epoch = epoch - 1
     
@@ -466,7 +463,7 @@ ws.Beep(1500, 3000)
 # Determine whether to save the weights of the PINN
 ny = input("Type (y) to save weights: ")
 if ny == "y":
-    model.save_weights('model.weights.h5')
+    model.save_weights('model_v2.weights.h5')
 
 # Choose if the user wants animations
 yn = input("Type (y) for animations: ")   #animations y/n

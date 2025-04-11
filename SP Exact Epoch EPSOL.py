@@ -28,7 +28,7 @@ import os
 
 #-----------------------------------------------------------------------------#
 
-def energy(omega, theta):
+def energy_func(omega, theta):
     energy = 0.5 * omega*omega + (1 - np.cos(theta))
     return(energy)
 
@@ -128,12 +128,61 @@ def phase_plot():
     plt.figure(figsize=(10,10))
     plt.plot(theta_pred, omega_pred, lw=4, linestyle = "--", color='orange', label='Predicted phase')
     plt.plot(theta, omega, lw=1, color='blue', label="Exact Phase")
-    plt.title("Phase Plot (omega, theta)")
-    plt.xlabel("theta")
-    plt.ylabel("omega")
+    plt.title("Phase Plot (omega, theta)", fontsize=20)
+    plt.xlabel("theta", fontsize=20)
+    plt.ylabel("omega", fontsize=20)
+    plt.tick_params(axis='both', labelsize=20)
     plt.grid(True)
-    plt.legend()
+    plt.legend(fontsize=20)
     plt.show
+    
+def side_by_side_combined():
+    fig = plt.figure(figsize=(30, 10))
+    gs = fig.add_gridspec(3, 3)
+    
+    ax1 = fig.add_subplot(gs[0, 0]) 
+    ax2 = fig.add_subplot(gs[1, 0]) 
+    ax4 = fig.add_subplot(gs[2, 0])
+
+    ax1.plot(np.log(loss_history) + 14, lw=2, color='orange', label='Loss per Epoch')
+    ax1.plot(np.zeros(epoch), lw=1, color='blue', label='Ideal Loss')
+    ax1.set_title("Loss vs Epochs", fontsize=20)
+    ax1.set_xlabel("Epochs", fontsize=20)
+    ax1.set_ylabel("Loss", fontsize=20)
+    ax1.tick_params(axis='both', labelsize=20)
+    ax1.grid(True)
+    ax1.legend(fontsize=20)
+
+    ax2.plot(energy_history, lw=3, color='orange', label='Energy per Epoch')
+    ax2.plot(initial_energy * np.ones(epoch), lw=1, color='blue', label='Ideal Energy')
+    ax2.set_title("Energy vs Epochs", fontsize=20)
+    ax2.set_xlabel("Epochs", fontsize=20)
+    ax2.set_ylabel("Energy", fontsize=20)
+    ax2.tick_params(axis='both', labelsize=20)
+    ax2.grid(True)
+    ax2.legend(fontsize=20)
+    
+    ax4.plot(p_history, lw=3, color='orange', label='Period per Epoch')
+    ax4.set_title("Period vs Epochs", fontsize=20)
+    ax4.set_xlabel("Epochs", fontsize=20)
+    ax4.set_ylabel("Period", fontsize=20)
+    ax4.tick_params(axis='both', labelsize=20)
+    ax4.grid(True)
+    ax4.legend(fontsize=20)
+
+    ax3 = fig.add_subplot(gs[:, 1]) 
+
+    ax3.plot(theta_pred, omega_pred, lw=4, linestyle="--", color='orange', label='Predicted Phase')
+    ax3.plot(theta, omega, lw=1, color='blue', label="Exact Phase")
+    ax3.set_title("Phase Plot (omega vs theta)", fontsize=20)
+    ax3.set_xlabel("theta", fontsize=20)
+    ax3.set_ylabel("omega", fontsize=20)
+    ax3.tick_params(axis='both', labelsize=20)
+    ax3.grid(True)
+    ax3.legend(fontsize=20)
+
+    plt.tight_layout()
+    plt.show()
 
 #-----------------------------------------------------------------------------#
 
@@ -188,27 +237,26 @@ def physics_informed_loss(t, theta_pred, omega_pred):
         theta_pred = theta_omega[:, 0:1]
         omega_pred = theta_omega[:, 1:2]
     
-    # Calculate energy
-    energy_pred = energy(theta_pred, omega_pred)
-    
-    # Find derivatives
+    # Compute d(theta)/dt and d(omega)/dt
     dtheta_dt = tape.gradient(theta_pred, t)
     domega_dt = tape.gradient(omega_pred, t)
     
-    # Physics-informed loss for both ODEs:
-    loss_theta = dtheta_dt/T - omega_pred
-    loss_omega = domega_dt/T + tf.sin(theta_pred)
+    # PIL for both ODEs:
+    loss_theta = dtheta_dt - omega_pred
+    loss_omega = domega_dt + tf.sin(theta_pred)
 
-    # Combine the losses from both equations using MSE
+    # Use MSE to find the loss
     physics_loss = tf.reduce_mean(tf.square(loss_theta)) + tf.reduce_mean(tf.square(loss_omega))
-    
-    energy_loss = tf.reduce_mean(tf.square(energy_pred - initial_energy))
-    
+
     # Delete the tape to free memory
     del tape
     
-    energy_history.append(np.average(energy_epoch))
+    # Energy calculations
+    energy_pred = energy_func(omega_pred, theta_pred)  # Predicted energy at each time
+    energy_loss = tf.reduce_mean(tf.square(energy_pred - initial_energy))  # Penalize deviation from initial energy
     
+    energy_history.append(np.average(energy_pred))
+
     return physics_loss + energy_loss  # Add energy loss with weight
 
 #-----------------------------------------------------------------------------#
@@ -217,10 +265,8 @@ def physics_informed_loss(t, theta_pred, omega_pred):
 
 #-----------------------------------------------------------------------------#
 
-# Initial conditions
-theta0 = 1
-omega0 = 0
-T = 10
+# Swing time
+T = 12
 
 # Generate training data
 t_train = np.linspace(0, T, 1000).reshape(-1, 1) # Sample points from the domain [0, T]
@@ -240,7 +286,11 @@ theta_history = []
 omega_history = []
 p_history = []
 
-initial_energy = energy(omega0, theta0)
+# Initial conditions
+theta0 = 1
+omega0 = 0
+
+initial_energy = energy_func(omega0, theta0)
 
 #-----------------------------------------------------------------------------#
 
@@ -267,7 +317,7 @@ while check == True:
     gradients = tape.gradient(loss, model.trainable_variables + [p])
     optimizer.apply_gradients(zip(gradients, model.trainable_variables + [p]))
 
-    energy_epoch = energy(omega_pred, theta_pred)
+    energy_epoch = energy_func(omega_pred, theta_pred)
     nrg.append(energy_epoch)
     theta_history.append(theta_pred)
     omega_history.append(omega_pred)
@@ -335,6 +385,7 @@ theta, omega = solution.y
 fade_plot()
 training_plot()
 phase_plot()
+side_by_side_combined()
 
 #-----------------------------------------------------------------------------#
     
